@@ -28,18 +28,6 @@
 \section{본 문서의 소개}
 본 문서는 Differential Dynamic Programming(이하 DDP)를 사용하여 자동차의 path planning 진행 사항에 대해 기록하고 있다. DDP를 이용하여 경로를 만들되, Control Barrier Function(이하 CBF)를 이용하여 constraint를 구성하고자 한다. 
 
-
-
-\subsection{서울시립대학교 제어 및 동역학 연구실의 소개}
-
-
-\begin{enumerate}
-    \item CDSL@UoS는 서울시립대학교 전자전기컴퓨터공학부 소속으로, 수학적 모델에 기반한 제어이론(control theory)을 개발하고 이를 로보틱스(robotics)의 다양한 분야에 적용하는 연구를 수행하고 있습니다. 
-    \item 본 연구실은 작성일 기준 박경훈 교수를 포함하여 8명의 연구자들로 구성되어 있습니다.
-    \item 보다 자세한 사항은 연구실 홈페이지(\url{https://sites.google.com/view/cdsluos})를 참고해주세요. 
-\end{enumerate}
-
-
 \section{Prior Information}
 \subsection{Differential Dynamic Programming}
 DDP에 대해서 다룰 때, discrete-time system을 고려한다. 따라서 모델의 kinematics는 식\eqref{eq:state_space}와 같이 함수 f와 g로 구성된다.
@@ -63,6 +51,15 @@ i번째 경우일 때 Value는 $V_i(x)\triangleq \underset{U_i}{\min}J_i(x,U_i)$
 DDP는 iteration을 여러번 진행하며 \eqref{eq:value}를 backward pass에서 최소화하고, forward pass를 진행한다.
 
 \subsubsection{Backward Pass}
+Q-function이 $\delta x$,$\delta u$만큼의 변화를 가지면 $Q(x+\delta x,u+\delta u)=Q(x,u)+\hat{Q}(\delta x,\delta u)+\epsilon$와 같다.
+
+\begin{align}
+	Q(\delta x,\delta u)=Q_x\delta x +Q_u \delta u +{1\over2} \delta x^{\top}Q_{xx}\delta x\nonumber\\
+	+\delta x^{\top}Q_{xu}\delta u+{1 \over 2}\delta u^{\top}Q_{uu}\delta u	
+	\label{eq:Q_second_order_approximation}
+\end{align}
+
+여기서 $Q$는 $\delta$의 변화에 따른 second-order approximation다.
 \begin{align}
 	Q(\delta x,\delta u) =\ell(x+\delta x,u+\delta u)\nonumber\\+V^{\prime}(f(x+\delta x)+g(x+\delta x)(u+\delta u))
 	\label{eq:taylor_expansion}
@@ -81,6 +78,7 @@ DDP는 iteration을 여러번 진행하며 \eqref{eq:value}를 backward pass에�
 Q에 대한 minimization을 진행하면
 \begin{align}
  	\delta u ^{\star}=\underset{\delta u}{\arg\min} Q(\delta x,\delta u)=k+K\delta x
+ 	\label{eq:delta_u}
 \end{align}
  가 만족된다.
 추가적인 constarints가 존재하지 않는다면 locally-linear한 상황에서
@@ -92,11 +90,19 @@ Q에 대한 minimization을 진행하면
 를 만족한다.
 k와 K를 구한 것을 이용하여 V에 대한 variation을 구할 수 있다.
 \begin{align}
-\Delta V&=-1/2k^{\top}Q_{uu}k\nonumber\\
+\Delta V&=-{1 \over2}k^{\top}Q_{uu}k\nonumber\\
 V_x&=Q_x-K^{\top}Q_{uu}k\nonumber\\
 V_{xx}&=Q_{xx}-K^{\top}Q_{uu}K
 \label{eq:V_variation}
 \end{align}
+
+수식 \ref{eq:kK}는 constraints가 없는 경우이다. constraints가 존재하는 경우 k와 K에 대한 다른 방법이 사용된다. backward pass에서는 $\delta x$에 대한 부분을 알 수 없기 때문에, 0으로 두고 $ \delta u$에 대한 부분을 구한다. 그러면 수식 \refeq{eq:delta_u}와 수식 \refeq{eq:Q_second_order_approximation}의 $\delta x$=0을 넣고 quadratic problem(QP)을 풀 수 있다.
+그 결과
+\begin{align*}
+	k=\underset{\delta u}{\arg\min} {1 \over 2}\delta u^{\top}Q_{uu}\delta u\\
+	subject \  to\  \underbar{b} \leq u+\delta u \leq \bar{b}
+\end{align*}
+QP를 풀 때 projected newtons's method를 사용한다. 이 과정에서 clamp가 안 된 free dimension이 나오게 된다. free dimension을 이용하며 $Q_{uu,f}$를 구하여 $K_f=-Q_{uu,f}Q_{ux}$를 통해 K를 구한다.
 
 \subsubsection{Forward Pass}
 Backward pass를 통해서 k,K의 값을 구하였고, 이를 이용하여 $\delta u^{\star}$를 구하였다.
@@ -108,6 +114,7 @@ Backward pass를 통해서 k,K의 값을 구하였고, 이를 이용하여 $\del
 	x_{i+1\_update}&=f(x_{i\_update})+g(x_{i\_update})u_{i\_update}
 	\label{eq:forward_pass}	
 \end{align}
+
 수식 \eqref{eq:forward_pass}에서의 $\delta u$는 $\alpha k_i+K_i(x_{i\_update}-x_i)$이다. $\alpha$는 1로 시작해서 점점 줄어드는 값이다.
 
 \subsection{Control Barrier Function}
