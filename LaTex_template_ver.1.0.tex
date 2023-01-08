@@ -25,10 +25,10 @@
 % Title
 \maketitle
 
-\section{본 문서의 소개}
+\section{abstraction}
 본 문서는 Differential Dynamic Programming(이하 DDP)를 사용하여 자동차의 path planning 진행 사항에 대해 기록하고 있다. DDP를 이용하여 경로를 만들되, Control Barrier Function(이하 CBF)를 이용하여 constraint를 구성하고자 한다. 
 
-\section{Prior Information}
+\section{사전 지식}
 \subsection{Differential Dynamic Programming}
 DDP에 대해서 다룰 때, discrete-time system을 고려한다. 따라서 모델의 kinematics는 식\eqref{eq:state_space}와 같이 함수 f와 g로 구성된다.
 \begin{align}
@@ -134,40 +134,45 @@ $h(x) \geq 0$을 만족하는 조건을 가지는 h(x)와 함께, 장벽 함수�
 위와 같이 barrier function을 설정하면, h(x)가 안전 영역 $\mathcal{C}$안에 있는 경우에는 항상 양수의 값을 가진다. 다만, 안전 영역의 경계로 다가갈수록 함수의 값이 커지게 된다.\\
  \subsubsection{Reciprocal Barrier Function}
  \begin{align}
- 	{1 \over \alpha_1(h(x)) \leq b(x) \leq {1\over \alpha_2(h(x))} }, L_f(b(x))\leq \alpha_3(h(x))	
+ 	{1 \over \alpha_1(h(x))} \leq b(x) \leq {1\over \alpha_2(h(x))} , L_f(b(x))\leq \alpha_3(h(x))	
 	\label{eq:reciprocal_barrier_function} 
 \end{align}
 $\alpha$는 $class-\mathcal{K}$를 의미한다. 수식 \refeq{eq:reciprocal_barrier_function}은 reciprocal barrier function이라고 부른다.
+reciprocal barrier function의 경우 $h(x)$가 경계에서는 $L_f h(x) \geq0$ 을 만족해야 한다. 그래야 h(x)가 안전 영역에 머무를 수 있다.
 
-\
+\subsubsection{Zeroing Barrier Function}
+\begin{align}
+	L_fh(x)\geq-\alpha(h(x))	
+	\label{eq:zero_barrier_function}
+\end{align}
+다음과 같은 h(x)를 zero barrier function이라고 한다. 
+
+\subsubsection{reciprocal control barrier function}
+\begin{align}
+	{1 \over{\alpha_1h(x)}}\leq b(x)\leq{{1 \over{\alpha_2h(x)}}},\nonumber\\
+	\underset{u\in U}{\inf}[L_fb(x)+L_gb(x)u]\leq \alpha_3(h(x))
+\end{align}
+
+\subsubsection{zeroing control barrier function }
+\begin{align}
+	\underset{u\in U}{sup}[L_fh(x)+L_gh(x)u]\geq -\alpha(h(x))
+\end{align}
 
 
-\subsection{수식 작성}
+\subsection{문제 설정}
+현재 ackerman steering으로 움직이는 바퀴 4개 달린 자동차의 kinematics를 기준으로 하고 있다. 
+$x=\begin{bmatrix*} x\\y\\\theta\\\phi \end{bmatrix*},u=\begin{bmatrix*}v\\\dot{\phi} \end{bmatrix*}$일 때,
+자동차의 kinematics는 다음과 같다.
 
-기본적으로 LaTex에서 문서를 작성하는 mode는 크게 plain text를 작성하는 textmode와 수식을 작성하는 mathmode로 나뉩니다. 
-문서 작성 시 textmode가 기본이며, mathmode로 진입하는 방법은 크게 아래의 두 경우입니다.  
-\begin{itemize}
-    \item 만약 plain text 내에서 수식을 작성하고 싶다면, ``\$$\cdots\text{(수식 내용)}\cdots$\$''와 같이 \$ symbol을 이용합니다. (예시 : $\dot{x} = Ax + Bu$)
-    \item 만약 plain text와 plain text 사이에 단독으로 수식을 넣고 싶다면, {\tt align} 등의 함수를 이용하여 다음과 같이 작성합니다({\tt align} 외에도 {\tt equation}, {\tt aligned} 등의 함수가 있습니다.)
-    \begin{align}\
-        \dot{x} = Ax + Bu
-    \end{align}
-    이 때 {\tt align} 함수를 사용하면 위와 같이 수식 번호를 확인할 수 있는데, {\tt eqref} 함수를 이용하면 (식 \eqref{eq:State_Space}와 같이) 본문 상에서 수식 번호를 참조할 수 있습니다. 
-
-    한편 수식 번호를 지우고 싶다면, $^*$ symbol을 추가하여 아래와 같이 작성하면 됩니다. 
-    \begin{align*}
-        y = Cx + Du
-    \end{align*}
-
-    또한 LaTex에서는 $\backslash\backslash$를 이용하여 줄바꿈을 하게 되는데, 이는 mathmode와 textmode에 공통으로 적용됩니다. 
-    이와 함께 \&를 이용하면, 여러 줄로 구성된 수식을 가지런히 정렬한 형태로 작성할 수 있습니다.
-    \begin{align}
-        \dot{x} & = A x + B u,\\
-        y & = C x + D u.
-    \end{align}
-
-\end{itemize}
+\begin{align}
+	\dot{x}=\begin{bmatrix} 1&0&0&0\\0&1&0&0\\0&0&1&0\\0&0&0&1 \end{bmatrix}x+
+	\begin{bmatrix} dt*cos(\theta)&0 \\dt*sin(\theta)& 0 \\0& {dt*tan(\phi) \over L}\\ 0 &dt \end{bmatrix}u
+	\label{eq:kinematics}
+\end{align}
+여기서 L은 자동차의 앞바퀴에서 뒷바퀴까지의 거리를 의미한다.  \\
+장애물을 나타내는 h(x)의 경우는 제일 기본적인 형태로 $h(x)=(x-xc)^2+(y-yc)^2-r^2$이다. 여기서 (xc,xy)는 장애물의 중심 (x,y)를 의미하고 r은 장애물의 반지름을 의미한다. h(x)의 기본형을 저렇게 잡아둔 것이지, 항상 저 형태로 유지되고 있지는 않다. -가 곱해지거나, $\log{\lvert h(x) \rvert}$가 취해지는 등 다양한 형태를 시도 중이다.
  
+b(x)의 경우는 $-\log({h(x) \over 1+h(x)})$를 사용하고 있다. 
 
 
 \subsection{Theorem 환경 사용}
