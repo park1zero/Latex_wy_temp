@@ -32,7 +32,7 @@
 \subsection{Differential Dynamic Programming}
 DDP에 대해서 다룰 때, discrete-time system을 고려한다. 따라서 모델의 kinematics는 식\eqref{eq:state_space}와 같이 함수 f와 g로 구성된다.
 \begin{align}
-	x_{i+1}=f(x)+g(x)u
+	x_{i+1}=f(x_{i})+g(x_{i})u_{i}
 	\label{eq:state_space}
 \end{align}
 
@@ -170,9 +170,62 @@ $x=\begin{bmatrix*} x\\y\\\theta\\\phi \end{bmatrix*},u=\begin{bmatrix*}v\\\dot{
 	\label{eq:kinematics}
 \end{align}
 여기서 L은 자동차의 앞바퀴에서 뒷바퀴까지의 거리를 의미한다.  \\
-장애물을 나타내는 h(x)의 경우는 제일 기본적인 형태로 $h(x)=(x-xc)^2+(y-yc)^2-r^2$이다. 여기서 (xc,xy)는 장애물의 중심 (x,y)를 의미하고 r은 장애물의 반지름을 의미한다. h(x)의 기본형을 저렇게 잡아둔 것이지, 항상 저 형태로 유지되고 있지는 않다. -가 곱해지거나, $\log{\lvert h(x) \rvert}$가 취해지는 등 다양한 형태를 시도 중이다.
+위와 같은 kinematics를 통해 $x^{dot}=f(x)+g(x)u$를 구성했다. 또한, 수식 \eqref{eq:Q_second_order_approximation}을 완성시켰다.\\ 여기까지의 과정으로 DDP를 이용한 경로 생성이 가능하다. 시작점을 출발점으로 하고 Car cost function의 $x$에 원하는 목적지인 $\hat{x}$를 추가하여 $x-\hat{x}$와 같이 구성하면, 출발점에서 목적지까지 이동하는 경로를 생성 가능하다.\\
+이제 추가적으로 구성을 해야 하는 부분은 장애물의 회피에 관한 부분이다. 장애물은 Control Barrier Function의 형태를 가지며 DDP에서 quadratic problem을 풀 때 내부 constraint로 들어갈 예정이다. 또한, Constrait의 형태는 inequation의 형태를 가지고 있다.
+
+
+
+\subsection{알고리즘 설명 및 시도}
+장애물을 나타내는 h(x)의 경우는 제일 기본적인 형태로 $h(x)=(x-xc)^2+(y-yc)^2-r^2$이다. 여기서 (xc,yc)는 장애물의 중심 (x,y)를 의미하고 r은 장애물의 반지름을 의미한다. h(x)의 기본형을 저렇게 잡아둔 것이지, 항상 저 형태로 유지되고 있지는 않다. -가 곱해지거나, $\log{\lvert h(x) \rvert}$가 취해지는 등 다양한 형태를 시도 중이다.
  
 b(x)의 경우는 $-\log({h(x) \over 1+h(x)})$를 사용하고 있다. 
+\\
+\subsubsection{case 1}
+
+\begin{align*}
+	h(x)&=(x-xc)^2+(y-yc)^2-r^2\\
+	\text{or} \\
+	h(x)&=r^2-(x-xc)^2-(y-yc)^2\\
+	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)
+\end{align*}
+\\
+
+\subsubsection{case 2}
+\begin{align*}
+	\alpha&=\arccos\left(\frac{xc(xc-x)+yc(yc-y)}{\sqrt{xc^2+yc^2}\sqrt{(xc-x)^2+(yc-y)^2}}\right)\\
+	h(x)&=\frac{H_0}{(x-xc)^2+(y-yc)^2-r^2}+\frac{H_1}{180-\theta-\alpha-\phi}\\
+	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)
+\end{align*}
+이게 $\phi, \theta$를 고려하는 방식이었는데, 일단은 폐기
+\\
+\subsubsection{case 3}
+
+\begin{align*}
+	h(x)&=\frac{H_0}{(x-xc)^2+(y-yc)^2-r^2}\\
+	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)
+\end{align*}
+\\
+\subsubsection{case 4}
+
+위의 case들에서 $r$을 $r+extra_size$로 변경 $extra_size$를 통해서 $r$보다 큰 bumper를 만들려고 시도
+\\
+\subsubsection{case 5}
+
+\begin{align*}
+	h(x)&=(r^2-(x-xc)^2-(y-yc)^2)u((r+5)^2-(x-xc)^2-(y-yc)^2)\\
+	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)
+\end{align*}
+
+Matlab 상에서 heaviside를 통해서 $u(t)$를 구성, 5가 $r$에 더해진 이유는 변화가 생기는 지점을 조절하고 싶어서 넣었다.
+\\
+\subsubsection{case 6}
+
+\begin{align*}
+	h(x)&=\log \left\| (x-xc)^2+(y-yc)^2-r^2 \right\|  \\
+	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)
+	\text{or}
+	B(x)&=\frac{1}{h(x)}
+\end{align*}
 
 
 \subsection{Theorem 환경 사용}
