@@ -212,7 +212,8 @@ b(x)의 경우는 $-\log({h(x) \over 1+h(x)})$를 사용하고 있다.
 \subsubsection{case 5}
 
 \begin{align*}
-	h(x)&=(r^2-(x-xc)^2-(y-yc)^2)u((r+5)^2-(x-xc)^2-(y-yc)^2)\\
+	h(x)&=(r^2-(x-xc)^2-(y-yc)^2)\times\\
+	 &\quad u((r+5)^2-(x-xc)^2-(y-yc)^2)\\
 	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)
 \end{align*}
 
@@ -222,8 +223,8 @@ Matlab 상에서 heaviside를 통해서 $u(t)$를 구성, 5가 $r$에 더해진 
 
 \begin{align*}
 	h(x)&=\log \left\| (x-xc)^2+(y-yc)^2-r^2 \right\|  \\
-	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)
-	\text{or}
+	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)\\
+	\text{or}\\
 	B(x)&=\frac{1}{h(x)}
 \end{align*}
 
