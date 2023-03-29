@@ -1,11 +1,16 @@
 \documentclass[journal]{IEEEtran}
 
 \usepackage{cite}
-\usepackage{amsmath, amssymb, graphicx}
+\usepackage{amsmath, amssymb, graphicx, color}
 \usepackage{mathtools, dsfont}
 \usepackage{array}
 \usepackage[caption=false,font=normalsize,labelfont=sf,textfont=sf]{subfig}
 \usepackage{url,kotex}
+\usepackage{algorithm, algpseudocode}
+\algtext*{EndFor}% Remove "end for" text
+\algtext*{EndWhile}% Remove "end while" text
+\algtext*{EndIf}% Remove "end if" text
+
 
 \newtheorem{theorem}{Theorem}    %% 정리
 \newtheorem{definition}{Definition} %% 정의
@@ -15,273 +20,274 @@
 \allowdisplaybreaks
 
 \begin{document}
+	
+	\title{DDP with CBF Constraints}
+	
+	\author{Wonyoung Park (University of Seoul)\\ 
+		Date: \today
+	}
+	
+	% Title
+	\maketitle
+	
+	\section{abstraction}
+	본 문서는 Differential Dynamic Programming(이하 DDP)를 사용하여 자동차의 path planning 진행 사항에 대해 기록하고 있다. DDP를 이용하여 경로를 만들되, Control Barrier Function(이하 CBF)를 이용하여 constraint를 구성하고자 한다. 
+	
+	\section{사전 지식}
+	\subsection{Differential Dynamic Programming}
+	DDP에 대해서 다룰 때, discrete-time system을 고려한다. 따라서 모델의 kinematics는 {식 \eqref{eq:state_space}}와 같이 {함수 $f$와 $g$}로 구성된다.
+	\begin{align}
+		x_{i+1}=f(x)+g(x)u
+		\label{eq:state_space}
+	\end{align}
+	
+	DDP의 total cost는
+	\begin{align}
+		J(x_0,U)=\sum_{i=0}^{N-1} \ell(x_i,u_i)+\ell_f(x_N)
+		\label{eq:total_cost}
+	\end{align}
+	식\eqref{eq:total_cost}와 같다. 여기서 $U \triangleq \{u_0,u_1,u_2...,u_{N-1}\}$이고, $ N$은 총 길이, $l_f$는 final cost를 의미한다.
+	이 상황에서 최소화를 하고자 하는 것은 $U^{\star}\triangleq\underset{U}{\arg\min} J(x_0,U)$이다.
+	i번째 경우일 때 Value는 $V_i(x)\triangleq \underset{U_i}{\min}J_i(x,U_i)$이다. 따라서 \eqref{eq:value}를 만족하게 된다.
+	\begin{align}
+		V(x)=\underset{u}{\min}[\ell(x,u)+V^{\prime}(f(x)+g(x)u)]
+		\label{eq:value}
+	\end{align}
+	DDP는 iteration을 여러번 진행하며 \eqref{eq:value}를 backward pass에서 최소화하고, forward pass를 진행한다.
+	
+	\subsubsection{Backward Pass}
+	Q-function이 $\delta x$,$\delta u$만큼의 변화를 가지면 $Q(x+\delta x,u+\delta u)=Q(x,u)+\hat{Q}(\delta x,\delta u)+\epsilon$와 같다.
+	
+	\begin{align}
+		\begin{split}
+			Q(\delta x,\delta u) & = Q_x\delta x +Q_u \delta u +{1\over2} \delta x^{\top}Q_{xx}\delta x\\
+			& \quad +\delta x^{\top}Q_{xu}\delta u+{1 \over 2}\delta u^{\top}Q_{uu}\delta u	
+		\end{split}
+		\label{eq:Q_second_order_approximation}
+	\end{align}
+	
+	여기서 $Q$는 $\delta$의 변화에 따른 second-order approximation다.
+	\begin{align}
+		Q(\delta x,\delta u) & =\ell(x+\delta x,u+\delta u)\nonumber\\
+		& \quad  +V^{\prime}(f(x+\delta x)+g(x+\delta x)(u+\delta u))
+		\label{eq:taylor_expansion}
+	\end{align}
+	
+	\eqref{eq:value}를 Taylor expansion하면 \eqref{eq:taylor_expansion}과 같다. Q-function의 pseudo-Hamiltonian을 구해보면 다음과 같다.
+	\begin{subequations}\label{eq:hamitonian}
+		\begin{align}
+			Q_x&=\ell_x+f_x^{\top}V_x^{\prime}\label{eq:hamitonian_1} \\
+			Q_u&=\ell_u+f_u^{\top}V_x^{\prime} \\
+			Q_{xx}&=\ell_{xx}+f_x^{\top}V_{xx}^{\prime}f_x+V_x^{\prime}f_{xx}\\
+			Q_{ux}&=\ell_{ux}+f_u^{\top}V_{xx}f_x+V_x^{\prime}f_{ux}\\
+			Q_{uu}&=\ell_{uu}+f_u^{\top}V_{xx}^{\prime}f_u+V_x^{\prime}f_{uu}
+		\end{align}
+	\end{subequations}
+	
+	Q에 대한 minimization을 진행하면
+	\begin{align}
+		\delta u ^{\star}=\underset{\delta u}{\arg\min} Q(\delta x,\delta u)=k+K\delta x
+		\label{eq:delta_u}
+	\end{align}
+	가 만족된다.
+	추가적인 constarints가 존재하지 않는다면 locally-linear한 상황에서
+	\begin{align}
+		k\triangleq-Q_{uu}^{-1}Q_u,
+		K\triangleq-Q_{uu}^{-1}Q_{ux}
+		\label{eq:kK}
+	\end{align}
+	를 만족한다.
+	k와 K를 구한 것을 이용하여 V에 대한 variation을 구할 수 있다.
+	\begin{align}
+		\Delta V&=-{1 \over2}k^{\top}Q_{uu}k\nonumber\\
+		V_x&=Q_x-K^{\top}Q_{uu}k\nonumber\\
+		V_{xx}&=Q_{xx}-K^{\top}Q_{uu}K
+		\label{eq:V_variation}
+	\end{align}
+	
+	수식 \ref{eq:kK}는 constraints가 없는 경우이다. constraints가 존재하는 경우 k와 K에 대한 다른 방법이 사용된다. backward pass에서는 $\delta x$에 대한 부분을 알 수 없기 때문에, 0으로 두고 $ \delta u$에 대한 부분을 구한다. 그러면 수식 \refeq{eq:delta_u}와 수식 \refeq{eq:Q_second_order_approximation}의 $\delta x$=0을 넣고 quadratic problem(QP)을 풀 수 있다.
+	그 결과
+	\begin{align*}
+		k=\underset{\delta u}{\rm argmin} ~{1 \over 2}\delta u^{\top}Q_{uu}\delta u\\
+		{\rm subject \  to}\  \underbar{b} \leq u+\delta u \leq \bar{b}
+	\end{align*}
+	QP를 풀 때 projected newtons's method를 사용한다. 이 과정에서 clamp가 안 된 free dimension이 나오게 된다. free dimension을 이용하며 $Q_{uu,f}$를 구하여 $K_f=-Q_{uu,f}Q_{ux}$를 통해 K를 구한다.
+	
+	\subsubsection{Forward Pass}
+	Backward pass를 통해서 k,K의 값을 구하였고, 이를 이용하여 $\delta u^{\star}$를 구하였다.
+	이 $\delta u$를 통해서 u에 대한 update를 진행한다.
+	
+	\begin{align}
+		x_{0}^{\rm update}&=x_0\nonumber\\
+		u_{i}^+&=u_i+\delta u\nonumber\\
+		x_{i+1\_update}&=f(x_{i\_update})+g(x_{i\_update})u_{i\_update}
+		\label{eq:forward_pass}	
+	\end{align}
+	
+	수식 \eqref{eq:forward_pass}에서의 $\delta u$는 $\alpha k_i+K_i(x_{i\_update}-x_i)$이다. $\alpha$는 1로 시작해서 점점 줄어드는 값이다.
+	
+	\subsection{Control Barrier Function}
+	안전 영역 $\mathcal{C}$이 있다고 하고, 안전 영역의 구역을 다음과 같이 정의 가능하다.
+	
+	\begin{align}
+		\mathcal{C} \coloneqq \{x \in \mathbb{R}... \mathds{R} : h(x) \geq 0 \}
+		\label{eq:safe_region}
+	\end{align}
+	
+	$h(x) \geq 0$을 만족하는 조건을 가지는 h(x)와 함께, 장벽 함수를 구현해야 한다.
+	크게 2가지의 장벽 함수를 고려했는데, 장벽 함수의 형태는 다음과 같다.
+	\begin{align}
+		b_1=-\log \left(\frac{h(x)}{1+h(x)}  \right) 
+		% \left {h(x)\over{1+h(x)}} \right), b_2(x)={1\over{ h(x)}}
+		\label{eq:barrier_function}
+	\end{align}
+	위와 같이 barrier function을 설정하면, h(x)가 안전 영역 $\mathcal{C}$안에 있는 경우에는 항상 양수의 값을 가진다. 다만, 안전 영역의 경계로 다가갈수록 함수의 값이 커지게 된다.\\
+	\subsubsection{Reciprocal Barrier Function}
+	\begin{align}
+		{1 \over \alpha_1(h(x))} \leq b(x) \leq {1\over \alpha_2(h(x))} , L_f(b(x))\leq \alpha_3(h(x))	
+		\label{eq:reciprocal_barrier_function} 
+	\end{align}
+	$\alpha$는 class-$\mathcal{K}$를 의미한다. 수식 \eqref{eq:reciprocal_barrier_function}은 reciprocal barrier function이라고 부른다.
+	reciprocal barrier function의 경우 $h(x)$가 경계에서는 $L_f h(x) \geq0$ 을 만족해야 한다. 그래야 h(x)가 안전 영역에 머무를 수 있다.
+	
+	\subsubsection{Zeroing Barrier Function}
+	\begin{align}
+		L_fh(x)\geq-\alpha(h(x))	
+		\label{eq:zero_barrier_function}
+	\end{align}
+	다음과 같은 h(x)를 zero barrier function이라고 한다. 
+	
+	\subsubsection{reciprocal control barrier function}
+	\begin{align}
+		& {1 \over{\alpha_1h(x)}}\leq b(x)\leq{{1 \over{\alpha_2h(x)}}},\nonumber\\
+		& \underset{u\in U}{\inf}[L_fb(x)+L_gb(x)u]\leq \alpha_3(h(x))
+	\end{align}
+	
+	\subsubsection{zeroing control barrier function }
+	\begin{align}
+		\underset{u\in U}{\sup}[L_fh(x)+L_gh(x)u]\geq -\alpha(h(x))
+	\end{align}
+	
+	
+	\subsection{문제 설정}
 
-\title{DDP with CBF Constraints}
-
-\author{Wonyoung Park (University of Seoul)\\ 
-        Date: \today
-        }
-
-% Title
-\maketitle
-
-\section{abstraction}
-본 문서는 Differential Dynamic Programming(이하 DDP)를 사용하여 자동차의 path planning 진행 사항에 대해 기록하고 있다. DDP를 이용하여 경로를 만들되, Control Barrier Function(이하 CBF)를 이용하여 constraint를 구성하고자 한다. 
-
-\section{사전 지식}
-\subsection{Differential Dynamic Programming}
-DDP에 대해서 다룰 때, discrete-time system을 고려한다. 따라서 모델의 kinematics는 식\eqref{eq:state_space}와 같이 함수 f와 g로 구성된다.
-\begin{align}
-	x_{i+1}=f(x_{i})+g(x_{i})u_{i}
-	\label{eq:state_space}
-\end{align}
-
-DDP의 total cost는
-\begin{align}
-	J(x_0,U)=\sum_{i=0}^{N-1} \ell(x_i,u_i)+\ell_f(x_N)
-	\label{eq:total_cost}
-\end{align}
-식\eqref{eq:total_cost}와 같다. 여기서 $U \triangleq \{u_0,u_1,u_2...,u_{N-1}\}$이고, N은 총 길이, $ell_f$는 final cost를 의미한다.
-이 상황에서 최소화를 하고자 하는 것은 $U^{\star}\triangleq\underset{U}{\arg\min} J(x_0,U)$이다.
-i번째 경우일 때 Value는 $V_i(x)\triangleq \underset{U_i}{\min}J_i(x,U_i)$이다. 따라서 \eqref{eq:value}를 만족하게 된다.
-\begin{align}
-	 V(x)=\underset{u}{\min}[\ell(x,u)+V^{\prime}(f(x)+g(x)u)]
-	\label{eq:value}
-\end{align}
-DDP는 iteration을 여러번 진행하며 \eqref{eq:value}를 backward pass에서 최소화하고, forward pass를 진행한다.
-
-\subsubsection{Backward Pass}
-Q-function이 $\delta x$,$\delta u$만큼의 변화를 가지면 $Q(x+\delta x,u+\delta u)=Q(x,u)+\hat{Q}(\delta x,\delta u)+\epsilon$와 같다.
-
-\begin{align}
-	Q(\delta x,\delta u)=Q_x\delta x +Q_u \delta u +{1\over2} \delta x^{\top}Q_{xx}\delta x\nonumber\\
-	+\delta x^{\top}Q_{xu}\delta u+{1 \over 2}\delta u^{\top}Q_{uu}\delta u	
-	\label{eq:Q_second_order_approximation}
-\end{align}
-
-여기서 $Q$는 $\delta$의 변화에 따른 second-order approximation다.
-\begin{align}
-	Q(\delta x,\delta u) =\ell(x+\delta x,u+\delta u)\nonumber\\+V^{\prime}(f(x+\delta x)+g(x+\delta x)(u+\delta u))
-	\label{eq:taylor_expansion}
-\end{align}
-
-\eqref{eq:value}를 Taylor expansion하면 \eqref{eq:taylor_expansion}과 같다. Q-function의 pseudo-Hamiltonian을 구해보면 다음과 같다.
-\begin{align}
-	Q_x&=\ell_x+f_x^{\top}V_x^{\prime} \nonumber\\
-	Q_u&=\ell_u+f_u^{\top}V_x^{\prime} \nonumber\\
-	Q_{xx}&=\ell_{xx}+f_x^{\top}V_{xx}^{\prime}f_x+V_x^{\prime}f_{xx}\nonumber\\
-	Q_{ux}&=\ell_{ux}+f_u^{\top}V_{xx}f_x+V_x^{\prime}f_{ux}\nonumber\\
-	Q_{uu}&=\ell_{uu}+f_u^{\top}V_{xx}^{\prime}f_u+V_x^{\prime}f_{uu}
-	\label{eq:hamitonian}
-\end{align}
-
-Q에 대한 minimization을 진행하면
-\begin{align}
- 	\delta u ^{\star}=\underset{\delta u}{\arg\min} Q(\delta x,\delta u)=k+K\delta x
- 	\label{eq:delta_u}
-\end{align}
- 가 만족된다.
-추가적인 constarints가 존재하지 않는다면 locally-linear한 상황에서
-\begin{align}
-	k\triangleq-Q_{uu}^{-1}Q_u,
-	K\triangleq-Q_{uu}^{-1}Q_{ux}
-	\label{eq:kK}
-\end{align}
-를 만족한다.
-k와 K를 구한 것을 이용하여 V에 대한 variation을 구할 수 있다.
-\begin{align}
-\Delta V&=-{1 \over2}k^{\top}Q_{uu}k\nonumber\\
-V_x&=Q_x-K^{\top}Q_{uu}k\nonumber\\
-V_{xx}&=Q_{xx}-K^{\top}Q_{uu}K
-\label{eq:V_variation}
-\end{align}
-
-수식 \ref{eq:kK}는 constraints가 없는 경우이다. constraints가 존재하는 경우 k와 K에 대한 다른 방법이 사용된다. backward pass에서는 $\delta x$에 대한 부분을 알 수 없기 때문에, 0으로 두고 $ \delta u$에 대한 부분을 구한다. 그러면 수식 \refeq{eq:delta_u}와 수식 \refeq{eq:Q_second_order_approximation}의 $\delta x$=0을 넣고 quadratic problem(QP)을 풀 수 있다.
-그 결과
-\begin{align*}
-	k=\underset{\delta u}{\arg\min} {1 \over 2}\delta u^{\top}Q_{uu}\delta u\\
-	subject \  to\  \underbar{b} \leq u+\delta u \leq \bar{b}
-\end{align*}
-QP를 풀 때 projected newtons's method를 사용한다. 이 과정에서 clamp가 안 된 free dimension이 나오게 된다. free dimension을 이용하며 $Q_{uu,f}$를 구하여 $K_f=-Q_{uu,f}Q_{ux}$를 통해 K를 구한다.
-
-\subsubsection{Forward Pass}
-Backward pass를 통해서 k,K의 값을 구하였고, 이를 이용하여 $\delta u^{\star}$를 구하였다.
-이 $\delta u$를 통해서 u에 대한 update를 진행한다.
-
-\begin{align}
-	x_{0\_update}&=x_0\nonumber\\
-	u_{i\_update}&=u_i+\delta u\nonumber\\
-	x_{i+1\_update}&=f(x_{i\_update})+g(x_{i\_update})u_{i\_update}
-	\label{eq:forward_pass}	
-\end{align}
-
-수식 \eqref{eq:forward_pass}에서의 $\delta u$는 $\alpha k_i+K_i(x_{i\_update}-x_i)$이다. $\alpha$는 1로 시작해서 점점 줄어드는 값이다.
-
-\subsection{Control Barrier Function}
-안전 영역 $\mathcal{C}$이 있다고 하고, 안전 영역의 구역을 다음과 같이 정의 가능하다.
-
-\begin{align}
-	\mathcal{C} \coloneqq \{x \in \mathds{R} : h(x) \geq 0 \}
-	\label{eq:safe_region}
-\end{align}
-
-$h(x) \geq 0$을 만족하는 조건을 가지는 h(x)와 함께, 장벽 함수를 구현해야 한다.
-크게 2가지의 장벽 함수를 고려했는데, 장벽 함수의 형태는 다음과 같다.
-\begin{align}
-	b_1=-log({h(x)\over{1+h(x)}}), b_2(x)={1\over{ h(x)}}
-	\label{eq:barrier_function}
-\end{align}
-위와 같이 barrier function을 설정하면, h(x)가 안전 영역 $\mathcal{C}$안에 있는 경우에는 항상 양수의 값을 가진다. 다만, 안전 영역의 경계로 다가갈수록 함수의 값이 커지게 된다.\\
- \subsubsection{Reciprocal Barrier Function}
- \begin{align}
- 	{1 \over \alpha_1(h(x))} \leq b(x) \leq {1\over \alpha_2(h(x))} , L_f(b(x))\leq \alpha_3(h(x))	
-	\label{eq:reciprocal_barrier_function} 
-\end{align}
-$\alpha$는 $class-\mathcal{K}$를 의미한다. 수식 \refeq{eq:reciprocal_barrier_function}은 reciprocal barrier function이라고 부른다.
-reciprocal barrier function의 경우 $h(x)$가 경계에서는 $L_f h(x) \geq0$ 을 만족해야 한다. 그래야 h(x)가 안전 영역에 머무를 수 있다.
-
-\subsubsection{Zeroing Barrier Function}
-\begin{align}
-	L_fh(x)\geq-\alpha(h(x))	
-	\label{eq:zero_barrier_function}
-\end{align}
-다음과 같은 h(x)를 zero barrier function이라고 한다. 
-
-\subsubsection{reciprocal control barrier function}
-\begin{align}
-	{1 \over{\alpha_1h(x)}}\leq b(x)\leq{{1 \over{\alpha_2h(x)}}},\nonumber\\
-	\underset{u\in U}{\inf}[L_fb(x)+L_gb(x)u]\leq \alpha_3(h(x))
-\end{align}
-
-\subsubsection{zeroing control barrier function }
-\begin{align}
-	\underset{u\in U}{sup}[L_fh(x)+L_gh(x)u]\geq -\alpha(h(x))
-\end{align}
-
-
-\subsection{문제 설정}
-현재 ackerman steering으로 움직이는 바퀴 4개 달린 자동차의 kinematics를 기준으로 하고 있다. 
-$x=\begin{bmatrix*} x\\y\\\theta\\\phi \end{bmatrix*},u=\begin{bmatrix*}v\\\dot{\phi} \end{bmatrix*}$일 때,
-자동차의 kinematics는 다음과 같다.
-
-\begin{align}
-	\dot{x}=\begin{bmatrix} 1&0&0&0\\0&1&0&0\\0&0&1&0\\0&0&0&1 \end{bmatrix}x+
-	\begin{bmatrix} dt*cos(\theta)&0 \\dt*sin(\theta)& 0 \\0& {dt*tan(\phi) \over L}\\ 0 &dt \end{bmatrix}u
-	\label{eq:kinematics}
-\end{align}
-여기서 L은 자동차의 앞바퀴에서 뒷바퀴까지의 거리를 의미한다.  \\
-위와 같은 kinematics를 통해 $x^{dot}=f(x)+g(x)u$를 구성했다. 또한, 수식 \eqref{eq:Q_second_order_approximation}을 완성시켰다.\\ 여기까지의 과정으로 DDP를 이용한 경로 생성이 가능하다. 시작점을 출발점으로 하고 Car cost function의 $x$에 원하는 목적지인 $\hat{x}$를 추가하여 $x-\hat{x}$와 같이 구성하면, 출발점에서 목적지까지 이동하는 경로를 생성 가능하다.\\
-이제 추가적으로 구성을 해야 하는 부분은 장애물의 회피에 관한 부분이다. 장애물은 Control Barrier Function의 형태를 가지며 DDP에서 quadratic problem을 풀 때 내부 constraint로 들어갈 예정이다. 또한, Constrait의 형태는 inequation의 형태를 가지고 있다.
-
-
-
-\subsection{알고리즘 설명 및 시도}
-장애물을 나타내는 h(x)의 경우는 제일 기본적인 형태로 $h(x)=(x-xc)^2+(y-yc)^2-r^2$이다. 여기서 (xc,yc)는 장애물의 중심 (x,y)를 의미하고 r은 장애물의 반지름을 의미한다. h(x)의 기본형을 저렇게 잡아둔 것이지, 항상 저 형태로 유지되고 있지는 않다. -가 곱해지거나, $\log{\lvert h(x) \rvert}$가 취해지는 등 다양한 형태를 시도 중이다.
- 
-b(x)의 경우는 $-\log({h(x) \over 1+h(x)})$를 사용하고 있다. 
-\\
-\subsubsection{case 1}
-
-\begin{align*}
-	h(x)&=(x-xc)^2+(y-yc)^2-r^2\\
-	\text{or} \\
-	h(x)&=r^2-(x-xc)^2-(y-yc)^2\\
-	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)
-\end{align*}
-\\
-
-\subsubsection{case 2}
-\begin{align*}
-	\alpha&=\arccos\left(\frac{xc(xc-x)+yc(yc-y)}{\sqrt{xc^2+yc^2}\sqrt{(xc-x)^2+(yc-y)^2}}\right)\\
-	h(x)&=\frac{H_0}{(x-xc)^2+(y-yc)^2-r^2}+\frac{H_1}{180-\theta-\alpha-\phi}\\
-	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)
-\end{align*}
-이게 $\phi, \theta$를 고려하는 방식이었는데, 일단은 폐기
-\\
-\subsubsection{case 3}
-
-\begin{align*}
-	h(x)&=\frac{H_0}{(x-xc)^2+(y-yc)^2-r^2}\\
-	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)
-\end{align*}
-\\
-\subsubsection{case 4}
-
-위의 case들에서 $r$을 $r+extra_size$로 변경 $extra_size$를 통해서 $r$보다 큰 bumper를 만들려고 시도
-\\
-\subsubsection{case 5}
-
-\begin{align*}
-	h(x)&=(r^2-(x-xc)^2-(y-yc)^2)\times\\
-	 &\quad u((r+5)^2-(x-xc)^2-(y-yc)^2)\\
-	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)
-\end{align*}
-
-Matlab 상에서 heaviside를 통해서 $u(t)$를 구성, 5가 $r$에 더해진 이유는 변화가 생기는 지점을 조절하고 싶어서 넣었다.
-\\
-\subsubsection{case 6}
-
-\begin{align*}
-	h(x)&=\log \left\| (x-xc)^2+(y-yc)^2-r^2 \right\|  \\
-	B(x)&=-\log\left( \frac{h(x)}{1+h(x)}\right)\\
-	\text{or}\\
-	B(x)&=\frac{1}{h(x)}
-\end{align*}
-
-
-\subsection{Theorem 환경 사용}
-
-연구실에서 수행하는 연구로 논문을 작성할 때, 경우에 따라 definition, lemma, theorem 등을 문서에 추가할 필요가 있습니다. 
-이 경우 IEEE 템플릿에서 공식 제공하거나 {\tt amsthm} package를 통해 {\tt newtheorem}으로 정의된 definition, lemma, theorem 함수 등을 아래와 같이 활용할 수 있습니다. 
-
-\begin{definition}
-    Blabla... $\hfill\square$
-\end{definition}
-
-\begin{lemma}
-    Blabla... $\hfill\square$
-\end{lemma}
-
-\begin{theorem}\label{thm:Dummy}
-Blabla... $\hfill\square$
-\end{theorem}
-\begin{IEEEproof}
-    Blabla...
-\end{IEEEproof}
-
-수식과 마찬가지로 {\tt label} 함수를 이용하여 Theorem~\ref{thm:Dummy}과 같이 상호 참조도 가능합니다.
-
-\subsection{Reference 작성}
-
-LaTex에서는 {\tt thebibliography}라는 함수 혹은 {\tt bib} 파일을 이용하여 reference를 관리합니다. 
-Reference 작성법은 별도로 연구실 Wiki를 통해 소개하고, 추후 템플릿에도 요약하여 정리해놓도록 하겠습니다. 
-Rerefenrece 작성 예시는 본 문서의 제일 마지막을 참고해주세요. 
-
-\subsection{유용한 참고 자료}
-
-아래 리스트에서는 LaTex 사용과 관련하여 유용한 참고 자료들을 소개합니다. 
-\begin{itemize}
-\item {\bf Overleaf documentation} : \url{https://www.overleaf.com/learn}
-\item {\bf LaTex 관련 Youtube 영상} (KAIST 수리과학과) : {\url{https://www.youtube.com/watch?v=ysnKC1jEC1s}}
-\item {\bf Detexify} : \url{https://detexify.kirelabs.org/classify.html}
-\item {\bf KTUG} (한국 텍 사용자 그룹) : 
-\item {\bf LaTex - Beginner's Guide} : {\url{http://static.latexstudio.net/wp-content/uploads/2015/03/LaTeX_Beginners_Guide.pdf}}
-\item {\bf IEEE Transactions Template 사용법 }: \url{https://www.cs.cmu.edu/~steffan/personal/tmp/IEEEtran_HOWTO.pdf}
-\item (이후 업데이트 될 예정입니다.)
-\end{itemize}
-
-
-
-\appendices
-
-\begin{thebibliography}{1}
-
-\bibitem{cite:IEEE_Template}
-\emph{IEEE Journal Paper Template}, IEEE, \url{https://www.overleaf.com/latex/templates/ieee-journal-paper-template/jbbbdkztwxrd}
-
-\bibitem{cite:LaTex_Wiki}
-\emph{LaTex}, Wikipedia, \url{https://en.wikipedia.org/wiki/LaTeX}
-
-\end{thebibliography}
-
+	\subsubsection{simple case}
+	\mbox{}\\
+	우선 가장 간단한 모델에 대해서 위의 상황을 구현해보고자 한다.
+	\begin{align}
+		\begin{split}
+		& x=[x_{1}\quad x_{2}]^\top\\
+		& u=[u_{1}\quad u_{2}]^\top\\
+		& \dot{x}=u
+		\end{split}
+		\label{eq:simple_case_continuous}
+	\end{align}
+	이와 같은 continuous한 모델의 discrete한 system으로 바꿔서 진행을 했다.
+	
+	\begin{align}
+		x[i+1]=x[i]+u[i]*dt	
+		\label{eq:simple_case_discrete}
+	\end{align}
+	
+\begin{algorithm}[H]
+	\caption{DDP with CBF}
+	\textbf{require} x0 and $\dot{B}(x) < class K {{1}over{B(x)}}$
+	\begin{algorithmic}[1]
+		\State $V = \mathrm{col}(v_1,\dots,v_{p}) \gets \begin{bmatrix} J(x) & 0 \end{bmatrix}\in\mathbb{R}^{{p}\times\max\{{p},{m}\}}$
+		\State $\tilde{Q}_0 = \mathrm{col}(\tilde{ q }_1,\dots,\tilde{ q }_{p}) \gets 0 \in \mathbb{R}^{{p}\times\max\{{p},{m}\}}$
+		\State $L_0 = [l_{ij}] \gets 0\in\mathbb{R}^{{p}\times {p}}$
+		\For{$j = 1$ \textbf{to} ${p}$}
+		\State $l_{jj} = \|v_j\|$
+		\If{$l_{jj} > 0$}
+		\State $\tilde{ q }_j = v_j / l_{jj}$
+		\If{$j<{p}$}
+		\For{$i = j + 1$ \textbf{to} ${p}$}
+		\State $l_{ij} = \langle v_i,\tilde{ q }_j\rangle$
+		\State $v_i = v_i - l_{ij}\tilde{ q }_j$
+		\EndFor
+		\EndIf
+		\EndIf
+		\EndFor
+	\end{algorithmic}
+	\label{alg:find_qr_decomposition}
+\end{algorithm}
+	
+	
+	
+	
+	
+	
+	
+	\subsubsection{ackerman model}
+	\mbox{}\\
+	현재 ackerman steering으로 움직이는 바퀴 4개 달린 자동차의 kinematics를 기준으로 하고 있다. 
+	$x=\begin{bmatrix*} x\\y\\\theta\\\phi \end{bmatrix*},u=\begin{bmatrix*}v\\\dot{\phi} \end{bmatrix*}$일 때,
+	자동차의 kinematics는 다음과 같다.
+	
+	\begin{align}
+		\dot{x}=\begin{bmatrix} 1&0&0&0\\0&1&0&0\\0&0&1&0\\0&0&0&1 \end{bmatrix}x+
+		\begin{bmatrix} dt*cos(\theta)&0 \\dt*sin(\theta)& 0 \\{dt*tan(\phi) \over L}& 0\\ 0 &dt \end{bmatrix}u
+		\label{eq:kinematics}
+	\end{align}
+	여기서 L은 자동차의 앞바퀴에서 뒷바퀴까지의 거리를 의미한다.  \\
+	장애물을 나타내는 h(x)의 경우는 제일 기본적인 형태로 $h(x)=(x-xc)^2+(y-yc)^2-r^2$이다. 여기서 (xc,xy)는 장애물의 중심 (x,y)를 의미하고 r은 장애물의 반지름을 의미한다. h(x)의 기본형을 저렇게 잡아둔 것이지, 항상 저 형태로 유지되고 있지는 않다. -가 곱해지거나, $\log{\lvert h(x) \rvert}$가 취해지는 등 다양한 형태를 시도 중이다.
+	
+	b(x)의 경우는 $-\log({h(x) \over 1+h(x)})$를 사용하고 있다. 
+	
+	
+	\subsection{Theorem 환경 사용}
+	
+	연구실에서 수행하는 연구로 논문을 작성할 때, 경우에 따라 definition, lemma, theorem 등을 문서에 추가할 필요가 있습니다. 
+	이 경우 IEEE 템플릿에서 공식 제공하거나 {\tt amsthm} package를 통해 {\tt newtheorem}으로 정의된 definition, lemma, theorem 함수 등을 아래와 같이 활용할 수 있습니다. 
+	
+	\begin{definition}
+		Blabla... $\hfill\square$
+	\end{definition}
+	
+	\begin{lemma}
+		Blabla... $\hfill\square$
+	\end{lemma}
+	
+	\begin{theorem}\label{thm:Dummy}
+		Blabla... $\hfill\square$
+	\end{theorem}
+	\begin{IEEEproof}
+		Blabla...
+	\end{IEEEproof}
+	
+	수식과 마찬가지로 {\tt label} 함수를 이용하여 Theorem~\ref{thm:Dummy}과 같이 상호 참조도 가능합니다.
+	
+	\subsection{Reference 작성}
+	
+	LaTex에서는 {\tt thebibliography}라는 함수 혹은 {\tt bib} 파일을 이용하여 reference를 관리합니다. 
+	Reference 작성법은 별도로 연구실 Wiki를 통해 소개하고, 추후 템플릿에도 요약하여 정리해놓도록 하겠습니다. 
+	Rerefenrece 작성 예시는 본 문서의 제일 마지막을 참고해주세요. 
+	
+	\subsection{유용한 참고 자료}
+	
+	아래 리스트에서는 LaTex 사용과 관련하여 유용한 참고 자료들을 소개합니다. 
+	\begin{itemize}
+		\item {\bf Overleaf documentation} : \url{https://www.overleaf.com/learn}
+		\item {\bf LaTex 관련 Youtube 영상} (KAIST 수리과학과) : {\url{https://www.youtube.com/watch?v=ysnKC1jEC1s}}
+		\item {\bf Detexify} : \url{https://detexify.kirelabs.org/classify.html}
+		\item {\bf KTUG} (한국 텍 사용자 그룹) : 
+		\item {\bf LaTex - Beginner's Guide} : {\url{http://static.latexstudio.net/wp-content/uploads/2015/03/LaTeX_Beginners_Guide.pdf}}
+		\item {\bf IEEE Transactions Template 사용법 }: \url{https://www.cs.cmu.edu/~steffan/personal/tmp/IEEEtran_HOWTO.pdf}
+		\item (이후 업데이트 될 예정입니다.)
+	\end{itemize}
+	
+	
+	
+	\appendices
+	
+	\begin{thebibliography}{1}
+		
+		\bibitem{cite:IEEE_Template}
+		\emph{IEEE Journal Paper Template}, IEEE, \url{https://www.overleaf.com/latex/templates/ieee-journal-paper-template/jbbbdkztwxrd}
+		
+		\bibitem{cite:LaTex_Wiki}
+		\emph{LaTex}, Wikipedia, \url{https://en.wikipedia.org/wiki/LaTeX}
+		
+	\end{thebibliography}
+	
 \end{document}
